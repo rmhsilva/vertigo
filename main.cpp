@@ -23,14 +23,14 @@ Ticker clk30;
  * Functions called on every clock tick
  */
 void clkfn1() {
-	// Simple status clocker...
-	statusLED = !statusLED;
+    // Simple status clocker...
+    statusLED = !statusLED;
 
-	temperature = temp.read();
+    temperature = temp.read();
 }
 
 void clkfn30() {
-	// Main timing loop.  Ie things can happen in 30s intervals
+    // Main timing loop.  Ie things can happen in 30s intervals
 }
 
 
@@ -38,11 +38,11 @@ void clkfn30() {
  * Setup various systems
  */
 void setup () {
-	// Attach tickers to functions
-	clk1.attach(&clkfn1, 1.0);		// 1 second clock
-	clk30.attach(&clkfn30, 30.0);	// 30 second clock
+    // Attach tickers to functions
+    clk1.attach(&clkfn1, 1.0);      // 1 second clock
+    clk30.attach(&clkfn30, 30.0);   // 30 second clock
 
-	temperature = 0;
+    temperature = 0;
 }
 
 
@@ -50,12 +50,14 @@ void setup () {
  * Main control loop
  */
 int main() {
-	int i;
+    int i;
+    
+    setup();
 
-	for (;;) {
-		ftdi.printf("Temperature: %f \r\n", temperature);
-		wait(0.2);
-	}
+    for (;;) {
+        ftdi.printf("Temperature: %f \r\n", temperature);
+        wait(0.2);
+    }
 
-	return 0;
+    return 0;
 }
