@@ -6,12 +6,15 @@ Serial ftdi(p9, p10);
 // Onboard LEDs
 DigitalOut statusLED(LED1);
 
+// Temperature sensor
+AnalogIn temperature(p20);
+
 
 int main() {
 	int i;
 
-	for (i=0; i<30; i++) {
-		ftdi.printf("Hello, number %d\n", i);
+	for (;;) {
+		ftdi.printf("Temp: %d \r\n", temperature.read());
 		wait(0.2);
 		statusLED = !statusLED;
 	}
