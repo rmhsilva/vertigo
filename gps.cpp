@@ -1,37 +1,36 @@
 #include "mbed.h"
 #include "gps.h"
 
-// ------ GPS CODE
-int GPSerror = 0, lon, lat, alt, hour, minute, second, total_time;
-Serial gps(GPS_TX, GPS_RX);
-
-// GPS SETUP
-void GPS_setup()
+// GPS constructor
+GPS::GPS(PinName tx, PinName rx)
+: gps(tx, rx)   // initialisation list... yes C++ is horrible
 {
   uint8_t setNMEAoff[] = {0xB5, 0x62, 0x06, 0x00, 0x14, 0x00, 0x01, 0x00, 0x00, 0x00, 0xD0, 0x08, 0x00, 0x00, 0x80, 0x25, 0x00, 0x00, 0x07, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0xA0, 0xA9};
-  gps.printf("%s", (char *)setNMEAoff);
+  this->gps.printf("%s", (char *)setNMEAoff);
 }
 
 // GET POSITION
-gps_position* gps_get_position()
+int GPS::get_position()
 {
   char position[60];
-  gps_position* position_str;
-  GPSerror = 0;
+  int GPSerror = 0, i;
 
   // Request data
-  uint8_t request[8] = {0xB5, 0x62, 0x01, 0x02, 0x00, 0x00, 0x03, 0x0A};
-  gps.printf("%s", request);
+  uint8_t request[] = {0xB5, 0x62, 0x01, 0x02, 0x00, 0x00, 0x03, 0x0A, 0x0};
+  this->gps.printf("%s", request);
 
   // getting data
-  gps.scanf("%s", &position);
+  for(i=0; i<58 && this->gps.readable(); i++) {
+    position[i] = this->gps.getc();
+  }
+  position[i] = 0x0;
 
   if( position[0] != 0xB5 ||position[1] != 0x62 )
     GPSerror = 21;
   if( position[2] != 0x01 || position[3] != 0x02 )
     GPSerror = 22;
 
-  if( !gps_verify_checksum((uint8_t *)&position[2], 32) ) {
+  if( !this->verify_checksum((uint8_t *)&position[2], 32) ) {
     GPSerror = 23;
   }
 
@@ -39,39 +38,37 @@ gps_position* gps_get_position()
   if(GPSerror == 0) {
     // 4 bytes of longitude (1e-7)
     lon = (int32_t)position[10] | (int32_t)position[11] << 8 |
-    (int32_t)position[12] << 16 | (int32_t)position[13] << 24;
-    lon /= 1000;
+      (int32_t)position[12] << 16 | (int32_t)position[13] << 24;
+    this->lon /= 1000;
 
     // 4 bytes of latitude (1e-7)
     lat = (int32_t)position[14] | (int32_t)position[15] << 8 |
-    (int32_t)position[16] << 16 | (int32_t)position[17] << 24;
-    lat /= 1000;
+      (int32_t)position[16] << 16 | (int32_t)position[17] << 24;
+    this->lat /= 1000;
 
     // 4 bytes of altitude above MSL (mm)
     alt = (int32_t)position[22] | (int32_t)position[23] << 8 |
-    (int32_t)position[24] << 16 | (int32_t)position[25] << 24;
-    alt /= 1000;
-
-    position_str->lon = lon;
-    position_str->lat = lat;
-    position_str->alt = alt;
+      (int32_t)position[24] << 16 | (int32_t)position[25] << 24;
+    this->alt /= 1000;
   }
 
-  position_str->GPSerror = GPSerror;
-  return position_str;
+  return GPSerror;
 }
 
-gps_time* gps_get_time()
+// Time
+int GPS::get_time()
 {
   char time[60];
-  gps_time* time_str;
-  GPSerror = 0;
+  int GPSerror = 0, i;
 
   uint8_t request[9] = {0xB5, 0x62, 0x01, 0x21, 0x00, 0x00, 0x22, 0x67, 0x0};
-  gps.printf("%s", request);
+  this->gps.printf("%s", request);
 
   // getting data
-  gps.scanf("%s", &time);
+  for(i=0; i<58 && this->gps.readable(); i++) {
+    time[i] = this->gps.getc();
+  }
+  time[i] = 0x0;
 
   // Verify the sync and header bits
   if( time[0] != 0xB5 || time[1] != 0x62 )
@@ -79,44 +76,41 @@ gps_time* gps_get_time()
   if( time[2] != 0x01 || time[3] != 0x21 )
     GPSerror = 32;
 
-  if( !gps_verify_checksum((uint8_t *)&time[2], 24) ) {
+  if( !this->verify_checksum((uint8_t *)&time[2], 24) ) {
     GPSerror = 33;
   }
 
   if(GPSerror == 0) {
-    hour = time[22];
-    minute = time[23];
-    second = time[24];
+    this->hour = time[22];
+    this->minute = time[23];
+    this->second = time[24];
 
     // Check for errors in the value
     if(hour > 23 || minute > 59 || second > 59)
     {
       GPSerror = 34;
     }
-    else {
-      time_str->hour = hour;
-      time_str->minute = minute;
-      time_str->second = second;
-    }
   }
 
   // Send error back
-  time_str->GPSerror = GPSerror;
-  return time_str;
+  return GPSerror;
 }
 
-bool gps_check_lock()
+char GPS::check_lock()
 {
-  GPSerror = 0;
-  bool check;
+  int GPSerror = 0, i;
   char lock[60];
+  char check;
 
   // Construct the request to the GPS
   uint8_t request[8] = {0xB5, 0x62, 0x01, 0x06, 0x00, 0x00, 0x07, 0x16};
-  gps.printf("%s", request);
+  this->gps.printf("%s", request);
 
   // getting data
-  gps.scanf("%s", lock);
+  for(i=0; i<58 && this->gps.readable(); i++) {
+    lock[i] = this->gps.getc();
+  }
+  lock[i] = 0x0;
 
   // Verify the sync and header bits
   if( lock[0] != 0xB5 || lock[1] != 0x62 ) {
@@ -127,7 +121,7 @@ bool gps_check_lock()
   }
 
   // Check 60 bytes minus SYNC and CHECKSUM (4 bytes)
-  if( !gps_verify_checksum((uint8_t *)&lock[2], 56) ) {
+  if( !this->verify_checksum((uint8_t *)&lock[2], 56) ) {
     GPSerror = 13;
   }
 
@@ -138,7 +132,7 @@ bool gps_check_lock()
     //dgps = buf[18];
       check = lock[16];
     } else
-    check = 0;
+      check = 0;
 
   //sats = buf[53];
   }
@@ -149,7 +143,7 @@ bool gps_check_lock()
   return check;
 }
 
-bool gps_verify_checksum(uint8_t* data, uint8_t len)
+bool GPS::verify_checksum(uint8_t* data, uint8_t len)
 {
   uint8_t a, b;
   return true;
