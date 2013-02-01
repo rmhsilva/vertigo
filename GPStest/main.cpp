@@ -19,7 +19,7 @@ Serial ftdi(PC_TX, PC_RX);
 // GPS
 Serial gps(GPS_TX, GPS_RX);
 
-int GPSerror = 0, lock=0, lat=0, lon=0, alt=0, sats=0;
+int GPSerror = 0, lock=0, lat=0, lon=0, alt=0, sats=0, hour=0, minute=0, second=0;
 
 void sendUBX(uint8_t *MSG, uint8_t len) {
   for(int i=0; i<len; i++) {
@@ -64,9 +64,11 @@ bool gps_verify_checksum(uint8_t* data, uint8_t len)
 char gps_check_lock()
 {
   int i=0;
-  uint8_t lock[80];
+  uint8_t gpsbuf[80];
   int check;
   Timer t;
+  
+  GPSerror = 0;
 
   // Construct the request to the GPS
   uint8_t request[8] = {0xB5, 0x62, 0x01, 0x06, 0x00, 0x00, 0x07, 0x16};
@@ -78,7 +80,7 @@ char gps_check_lock()
   t.start();
   while (1) {
     if(gps.readable()) {
-        lock[i] = gps.getc();
+        gpsbuf[i] = gps.getc();
         //ftdi.printf("0x%x ",lock[i]);
         i++;
     }
@@ -90,47 +92,48 @@ char gps_check_lock()
   //lock[i] = 0x0;
 
   // Verify the sync and header bits
-  if( lock[0] != 0xB5 || lock[1] != 0x62 ) {
+  if( gpsbuf[0] != 0xB5 || gpsbuf[1] != 0x62 ) {
     GPSerror = 11;
   }
-  if( lock[2] != 0x01 || lock[3] != 0x06 ) {
+  if( gpsbuf[2] != 0x01 || gpsbuf[3] != 0x06 ) {
     GPSerror = 12;
   }
 
   // Check 60 bytes minus SYNC and CHECKSUM (4 bytes)
-  if( !gps_verify_checksum((uint8_t *)&lock[2], 56) ) {
+  if( !gps_verify_checksum((uint8_t *)&gpsbuf[2], 56) ) {
     GPSerror = 13;
   }
 
   if(GPSerror == 0){
     // Return the value if GPSfixOK is set in 'flags'
-    if( lock[17] & 0x01 ) {
+    if( gpsbuf[17] & 0x01 ) {
     //check = buf[16];
     //dgps = buf[18];
-      check = lock[16];
+      check = gpsbuf[16];
     } else
       check = 0;
 
-  sats = lock[53];
+  sats = gpsbuf[53];
   }
   else {
     check = 0;
   }
 
-  return check;
+  lock = check;
+  return GPSerror;
 }
 
 // GET POSITION
 int gps_get_position()
 {
-  char position[80];
-  int i;
+  char gpsbuf[80];
+  int i=0;
   Timer t;
   
   GPSerror = 0;
 
   // Request data
-  uint8_t request[] = {0xB5, 0x62, 0x01, 0x02, 0x00, 0x00, 0x03, 0x0A, 0x0};
+  uint8_t request[9] = {0xB5, 0x62, 0x01, 0x02, 0x00, 0x00, 0x03, 0x0A, 0x0};
   sendUBX(request, 9);
 
   // getting data
@@ -138,7 +141,62 @@ int gps_get_position()
   t.start();
   while (1) {
     if(gps.readable()) {
-        position[i] = gps.getc();
+        gpsbuf[i] = gps.getc();
+        //ftdi.printf("0x%x ",gpsbuf[i]);
+        i++;
+    }
+    if(t.read_ms()>1000) {
+        break;
+    }
+  }
+  t.stop();
+
+  if( gpsbuf[0] != 0xB5 || gpsbuf[1] != 0x62 )
+    GPSerror = 21;
+  if( gpsbuf[2] != 0x01 || gpsbuf[3] != 0x02 )
+    GPSerror = 22;
+  
+  if( !gps_verify_checksum((uint8_t *)&gpsbuf[2], 32) ) {
+    GPSerror = 23;
+  }
+
+  // GPS data
+  if(GPSerror == 0) {
+    // 4 bytes of longitude (1e-7)
+    lon = (int32_t)gpsbuf[10] | (int32_t)gpsbuf[11] << 8 |
+      (int32_t)gpsbuf[12] << 16 | (int32_t)gpsbuf[13] << 24;
+    lon /= 1000;
+
+    // 4 bytes of latitude (1e-7)
+    lat = (int32_t)gpsbuf[14] | (int32_t)gpsbuf[15] << 8 |
+      (int32_t)gpsbuf[16] << 16 | (int32_t)gpsbuf[17] << 24;
+    lat /= 1000;
+
+    // 4 bytes of altitude above MSL (mm)
+    alt = (int32_t)gpsbuf[22] | (int32_t)gpsbuf[23] << 8 |
+      (int32_t)gpsbuf[24] << 16 | (int32_t)gpsbuf[25] << 24;
+    alt /= 1000;
+  }
+
+  return GPSerror;
+}
+
+int gps_get_time()
+{
+  char time[80];
+  int i=0;
+  Timer t;
+  
+  GPSerror = 0;
+  uint8_t request[9] = {0xB5, 0x62, 0x01, 0x21, 0x00, 0x00, 0x22, 0x67, 0x0};
+  sendUBX(request, 9);
+
+  // getting data
+  t.reset();
+  t.start();
+  while (1) {
+    if(gps.readable()) {
+        time[i] = gps.getc();
         //ftdi.printf("0x%x ",lock[i]);
         i++;
     }
@@ -148,33 +206,29 @@ int gps_get_position()
     }
     t.stop();
 
-  if( position[0] != 0xB5 ||position[1] != 0x62 )
-    GPSerror = 21;
-  if( position[2] != 0x01 || position[3] != 0x02 )
-    GPSerror = 22;
+  // Verify the sync and header bits
+  if( time[0] != 0xB5 || time[1] != 0x62 )
+    GPSerror = 31;
+  if( time[2] != 0x01 || time[3] != 0x21 )
+    GPSerror = 32;
 
-  if( !gps_verify_checksum((uint8_t *)&position[2], 32) ) {
-    GPSerror = 23;
+  if( !gps_verify_checksum((uint8_t *)&time[2], 24) ) {
+    GPSerror = 33;
   }
 
-  // GPS data
   if(GPSerror == 0) {
-    // 4 bytes of longitude (1e-7)
-    lon = (int32_t)position[10] | (int32_t)position[11] << 8 |
-      (int32_t)position[12] << 16 | (int32_t)position[13] << 24;
-    lon /= 1000;
+    hour = time[22];
+    minute = time[23];
+    second = time[24];
 
-    // 4 bytes of latitude (1e-7)
-    lat = (int32_t)position[14] | (int32_t)position[15] << 8 |
-      (int32_t)position[16] << 16 | (int32_t)position[17] << 24;
-    lat /= 1000;
-
-    // 4 bytes of altitude above MSL (mm)
-    alt = (int32_t)position[22] | (int32_t)position[23] << 8 |
-      (int32_t)position[24] << 16 | (int32_t)position[25] << 24;
-    alt /= 1000;
+    // Check for errors in the value
+    if(hour > 23 || minute > 59 || second > 59)
+    {
+      GPSerror = 34;
+    }
   }
 
+  // Send error back
   return GPSerror;
 }
 
@@ -191,18 +245,20 @@ int main() {
         
         
         // Print out the vals
-        lock = gps_check_lock();
+        gps_check_lock();
         
-        ftdi.printf("lock:%d, Error:%d, lat:%x, lon:%x, alt:%x, min:, done.\r\n",
-                                                                    lock,
-                                                                    GPSerror,
-                                                                    0,//gps.lat,//gps_pos->lat,
-                                                                    0,//gps.lon,//gps_pos->lon,
-                                                                    0,//gps.alt,//gps_pos->alt,
-                                                                    0);//gps.minute);//gps_t->minute);
+        ftdi.printf("lock:%d Error:%d\r\n",lock,GPSerror);
         
-        gps_get_position();
-        ftdi.printf("lat:%d,lon:%d,alt:%d,sats:%d,Error:%d\r\n",lat,lon,alt,sats,GPSerror);
+        if(gps_get_position()!=0) {
+            gps_get_position();
+            }
+        
+        ftdi.printf("lat:%d lon:%d alt:%d sats:%d Error:%d\r\n",lat,lon,alt,sats,GPSerror);
+        
+        gps_get_time();
+        
+        ftdi.printf("time: %d:%d:%d Error:%d\r\n",hour,minute,second,GPSerror);
+        
         //gps.scanf("%s", &gpsout);
         //ftdi.printf("Temp: 0x%x \r\n", temperature);
         
