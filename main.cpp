@@ -1,15 +1,22 @@
 #include "mbed.h"
 
-Serial pc(USBTX, USBRX);
+#define toggle(x) { if (x) x=0; else x=1; }
+
+// Set up serial port
+Serial ftdi(p9, p10);
+
+// Onboard LEDs
+DigitalOut statusLED(LED1);
+
 
 int main() {
 	int i;
 
-	while(1) {
-		for (i=0; i<10; i++) {
-			pc.printf("Hello, number %d", i);
-		}
+	for (i=0; i<30; i++) {
+		ftdi.printf("Hello, number %d\n", i);
+		wait(0.2);
+		toggle(statusLED);
 	}
-	
+
 	return 0;
 }
