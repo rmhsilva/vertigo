@@ -3,14 +3,11 @@
 
 /*****[ Defines, constants etc ]*****************************************/
 
-#define CLK_SHORT   10.0    // Short clock (seconds)
+#define CLK_SHORT   5.0     // Short clock (seconds)
 #define CLK_LONG    30.0    // Long clock!
 
 #define PC_TX       p9      // Rx / Tx pins for PC (ftdi) comms
 #define PC_RX       p10
-
-#define GPS_TX      p13     // Rx / Tx for GPS
-#define GPS_RX      p14
 
 #define TEMP_IN     p20       // Analogue temperature sensor in
 
@@ -47,7 +44,7 @@ void clkfn_short() {
     statusLED = !statusLED;
 
     temperature = temp.read();
-	do_gps_update = true;
+    do_gps_update = true;
 }
 
 void clkfn_long() {
@@ -101,10 +98,10 @@ void setup () {
     clk_l.attach(&clkfn_long, CLK_LONG);        // long clock
 
     temperature = 0;
-	do_gps_update = false;
+    do_gps_update = false;
 
-	GPS_setup();
-	
+    GPS_setup();
+    
     getConfig();
     getDevices();
 }
@@ -117,20 +114,20 @@ int main() {
     setup();
 
     for (;;) {
-		// Retrieve new GPS values if required
-		if (do_gps_update) {
-			do_gps_update = false;
-			gps_pos = gps_get_position();
-			gps_t = get_gps_time();
-		}
-		
-		// Print out the vals
+        // Retrieve new GPS values if required
+        if (do_gps_update) {
+            do_gps_update = false;
+            gps_pos = gps_get_position();
+            gps_t = gps_get_time();
+        }
+        
+        // Print out the vals
         ftdi.printf("Temperature: %f.  lat:%d, lon:%d, alt:%d, min:%d \r\n", temperature,
-																	gps_pos->lat,
-																	gps_pos->lon,
-																	gps_pos->alt,
-																	gps_t->minute);
-        wait(0.2);
+                                                                    gps_pos->lat,
+                                                                    gps_pos->lon,
+                                                                    gps_pos->alt,
+                                                                    gps_t->minute);
+        wait(CLK_SHORT);
     }
 
     return 0;
