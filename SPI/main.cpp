@@ -377,4 +377,10 @@ int main() {
     n = sprintf(superbuffer, "$$MBED,HI,EVERYONE");
 	n = sprintf(superbuffer, "%s*%04X\n", superbuffer, CRC16_checksum(superbuffer));
     rtty_txstring(superbuffer);
+	
+	while(1) {
+		wait(3);
+		n = sprintf(superbuffer, "$$MBED,HI,EVERYONE");
+		n = sprintf(superbuffer, "%s*%04X\n", superbuffer, CRC16_checksum(superbuffer));
+		rtty_txstring(superbuffer);
 }
