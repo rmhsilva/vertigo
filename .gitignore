@@ -12,4 +12,7 @@
 *.la
 *.a
 
+# For Phil
+*.*~
+
 .DS_STORE
