@@ -1,5 +1,6 @@
 #include "mbed.h"
 #include "RFM22nu.cpp"
+#include "RTTY.cpp"
 
 DigitalOut led(LED1);
 
@@ -22,4 +23,8 @@ int main() {
 	rfm434.write(0x6D, 0x04);// turn tx low power 11db
   
 	rfm434.write(0x07, 0x08); // turn tx on
+	
+	wait(5.0);
+	
+	rtty_txstring("TEST TEST TEST TEST TEST TEST TEST TEST TEST TEST);
 }
