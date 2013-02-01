@@ -1,5 +1,5 @@
 // ------ GPS CODE
-int GPSerror = 0, long, lat, alt;
+int GPSerror = 0, long, lat, alt, hour, minute, second, total_time;;
 
 // GPS SETUP
 void GPS_setup()
@@ -46,6 +46,41 @@ void gps_get_position()
       alt = (int32_t)position[22] | (int32_t)position[23] << 8 |
           (int32_t)position[24] << 16 | (int32_t)position[25] << 24;
       alt /= 1000;
+    }
+}
+
+void gps_get_time()
+{
+	bool GPSerror = false;
+	char time[60];
+
+    uint8_t request[8] = {0xB5, 0x62, 0x01, 0x21, 0x00, 0x00, 0x22, 0x67, 0x0};
+    gps.printf("%s", request);
+
+    // getting data
+	gps.scanf("%s", &time);
+
+    // Verify the sync and header bits
+    if( time[0] != 0xB5 || time[1] != 0x62 )
+        GPSerror = 31;
+    if( time[2] != 0x01 || time[3] != 0x21 )
+        GPSerror = 32;
+
+    if( !_gps_verify_checksum(&time[2], 24) ) {
+      GPSerror = 33;
+    }
+    
+    if(GPSerror == 0) {
+      if(hour > 23 || minute > 59 || second > 59)
+      {
+        GPSerror = 34;
+      }
+      else {
+        hour = time[22];
+        minute = time[23];
+        second = time[24];
+        total_time = hour + minute + second;
+      }
     }
 }
 
