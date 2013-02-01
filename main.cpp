@@ -1,4 +1,5 @@
 #include "mbed.h"
+#include "gps.h"
 
 /*****[ Defines, constants etc ]*****************************************/
 
@@ -20,8 +21,9 @@
 Serial ftdi(PC_TX, PC_RX);
 
 // GPS
-Serial gps(GPS_TX, GPS_RX);
-volatile char gpsout[100];
+gps_position* gps_pos;
+gps_time* gps_t;
+volatile bool do_gps_update;
 
 // Onboard LEDs
 DigitalOut statusLED(LED1);
@@ -45,7 +47,7 @@ void clkfn_short() {
     statusLED = !statusLED;
 
     temperature = temp.read();
-    gps.scanf("%s", &gpsout);
+	do_gps_update = true;
 }
 
 void clkfn_long() {
@@ -99,7 +101,10 @@ void setup () {
     clk_l.attach(&clkfn_long, CLK_LONG);        // long clock
 
     temperature = 0;
+	do_gps_update = false;
 
+	GPS_setup();
+	
     getConfig();
     getDevices();
 }
@@ -108,13 +113,23 @@ void setup () {
 /*
  * Main control loop
  */
-int main() {
-    int i;
-    
+int main() {    
     setup();
 
     for (;;) {
-        ftdi.printf("Temperature: %f.  GPS: %s \r\n", temperature, gpsout);
+		// Retrieve new GPS values if required
+		if (do_gps_update) {
+			do_gps_update = false;
+			gps_pos = gps_get_position();
+			gps_t = get_gps_time();
+		}
+		
+		// Print out the vals
+        ftdi.printf("Temperature: %f.  lat:%d, lon:%d, alt:%d, min:%d \r\n", temperature,
+																	gps_pos->lat,
+																	gps_pos->lon,
+																	gps_pos->alt,
+																	gps_t->minute);
         wait(0.2);
     }
 
