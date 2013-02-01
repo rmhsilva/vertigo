@@ -21,7 +21,7 @@ Serial ftdi(PC_TX, PC_RX);
 
 // GPS
 Serial gps(GPS_TX, GPS_RX);
-volatile char gps[100];
+volatile char gpsout[100];
 
 // Onboard LEDs
 DigitalOut statusLED(LED1);
@@ -32,8 +32,8 @@ AnalogIn temp(TEMP_IN);
 volatile float temperature;
 
 // Clocker thing (it ticks...)
-Ticker clk1;
-Ticker clk30;
+Ticker clk_s;
+Ticker clk_l;
 
 /*****[ Functions ]*******************************************************/
 
@@ -45,17 +45,18 @@ void clkfn_short() {
     statusLED = !statusLED;
 
     temperature = temp.read();
-    gps = gps.scanf();
+    gps.scanf("%s", &gpsout);
 }
 
 void clkfn_long() {
     // Main timing loop.  Ie things that must happen over longer time periods
+    return;
 }
 
 /*
  * PC debugging method over serial
  */
-void error(char* msg) {
+void err(char *msg) {
     ftdi.printf("Error: %s\r\n", msg);
 }
 
@@ -63,16 +64,17 @@ void error(char* msg) {
 /*
  * Retrieves the config variables from config.txt and sets things up appropriately
  */
-void getConfig() {
+int getConfig() {
     LocalFileSystem local("local");
     FILE *fp = fopen("/local/config.txt", "r");
 
     if (!fp) {
-        error("Config file not found");
+        err("Config file not found");
         return 1;
     }
 
     fclose(fp);
+    return 0;
 }
 
 /*
@@ -97,7 +99,6 @@ void setup () {
     clk_l.attach(&clkfn_long, CLK_LONG);        // long clock
 
     temperature = 0;
-    gps = "";
 
     getConfig();
     getDevices();
@@ -113,7 +114,7 @@ int main() {
     setup();
 
     for (;;) {
-        ftdi.printf("Temperature: %f.  GPS: %s \r\n", temperature, gps);
+        ftdi.printf("Temperature: %f.  GPS: %s \r\n", temperature, gpsout);
         wait(0.2);
     }
 
