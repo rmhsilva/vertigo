@@ -930,7 +930,7 @@ void rfm22_868_setup() {
 
 int main() {
     int n;
-	int rssi_1, rssi_2;
+    int rssi_1, rssi_2;
     temperature = (int16_t)((temp.read_u16()-9930)/199.0);
     ftdi.printf("Initiliasing GPS..\r\n");
     gps_setup();
@@ -943,7 +943,7 @@ int main() {
     //write_rfm434(0x07, 0x08); // turn tx on
     
     setFrequency_rfm868(869.5);
-    write_rfm868(0x6D, 0x04);// turn tx low power 11db
+    write_rfm868(0x6D, 0x07);// turn tx high power 100mW
     write_rfm868(0x07, 0x08); // turn tx on
     
     ftdi.printf("Entering Loop.\r\n");
@@ -954,6 +954,14 @@ int main() {
         //gps.get_position();
         //gps.get_time();
         
+        write_rfm868(0x07, 0x01); // turn tx off
+        rssi_1 = ((int)read_rfm868(26)*51 - 12400)/100; // returned in dBm
+        wait(0.5);
+        temperature = (int16_t)((temp.read_u16()-9930)/199.0); // Radios need to be turned off here
+        rssi_2 = ((int)read_rfm868(26)*51 - 12400)/100;
+        //if ((rssi_1 > -50) && (rssi_2 > -50))
+        
+        write_rfm868(0x07, 0x08); // turn tx on
         
         // Print out the vals
         gps_check_lock();
@@ -976,13 +984,7 @@ int main() {
         n = sprintf (buffer434, "$$VERTIGO,%d,%02d%02d%02d,%ld,%ld,%ld,%d", count, hour, minute, second, lat, lon, alt, sats);
         n = sprintf (buffer434, "%s*%04X\n", buffer434, (CRC16_checksum(buffer434) & 0xFFFF));
         
-		write_rfm868(0x07, 0x01); // turn tx off
-		rssi_1 = ((int)read_rfm868(26)*51 - 12400)/100; // returned in dBm
-		wait(0.5);
-		rssi_2 = ((int)read_rfm868(26)*51 - 12400)/100;
-		write_rfm868(0x07, 0x08); // turn tx on
-		
-        //temperature = (int16_t)((temp.read_u16()-9930)/199.0); // Radios need to be turned off here
+        
         n = sprintf (buffer868, "$$8VERTIGO,%d,%02d%02d%02d,%ld,%ld,%ld,%d,%d,%d,%d", count, hour, minute, second, lat, lon, alt, sats, temperature, rssi_1, rssi_2);
         n = sprintf (buffer868, "%s*%04X\n", buffer868, (CRC16_checksum(buffer868) & 0xFFFF));
         //rtty_434_txstring(buffer434);
