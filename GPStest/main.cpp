@@ -29,9 +29,11 @@ SPI rfm868(p11, p12, p13);
 
 AnalogIn temp(TEMP_IN);
 
-int GPSerror = 0, count = 0, lock=0, dgps=0, lat=0, lon=0, alt=0, sats=0, hour=0, minute=0, second=0;
+int GPSerror = 0, count434 = 0, count868 = 0, lock=0, dgps=0, lat=0, lon=0, alt=0, sats=0, hour=0, minute=0, second=0;
+int last_lat=0, last_lon=0, last_alt=0;
+char state;
 
-int temperature;
+int temperature = 0, nlock_count = 0;
 
 char buffer434 [80]; //Telem string buffer
 
@@ -100,7 +102,7 @@ char gps_check_lock()
         //ftdi.printf("0x%x ",lock[i]);
         i++;
     }
-    if(t.read_ms()>1000) {
+    if(t.read_ms()>700) {
         break;
         }
     }
@@ -161,7 +163,7 @@ int gps_get_position()
         //ftdi.printf("0x%x ",gpsbuf[i]);
         i++;
     }
-    if(t.read_ms()>1000) {
+    if(t.read_ms()>700) {
         break;
     }
   }
@@ -216,7 +218,7 @@ int gps_get_time()
         //ftdi.printf("0x%x ",lock[i]);
         i++;
     }
-    if(t.read_ms()>1000) {
+    if(t.read_ms()>700) {
         break;
         }
     }
@@ -246,6 +248,25 @@ int gps_get_time()
 
   // Send error back
   return GPSerror;
+}
+
+void gpsPower(int i){
+  if(i == 0){
+    //turn off GPS
+    //  uint8_t GPSoff[] = {0xB5, 0x62, 0x02, 0x41, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x02, 0x00, 0x00, 0x00, 0x4D, 0x3B};
+    uint8_t GPSoff[] = {0xB5, 0x62, 0x06, 0x04, 0x04, 0x00, 0x00, 0x00, 0x08, 0x00, 0x16, 0x74};
+    sendUBX(GPSoff, sizeof(GPSoff)/sizeof(uint8_t));
+    //gpsstatus = 0;
+  }
+  else if (i == 1){
+    //turn on GPS
+     //uint8_t GPSon[] = {0xB5, 0x62, 0x02, 0x41, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x4C, 0x37};
+    uint8_t GPSon[] = {0xB5, 0x62, 0x06, 0x04, 0x04, 0x00, 0x00, 0x00, 0x09, 0x00, 0x17, 0x76};
+    sendUBX(GPSon, sizeof(GPSon)/sizeof(uint8_t));
+    //gpsstatus = 1;
+    wait(1);
+    gps_setup();
+  }
 }
 
 char read_rfm434(char addr) {
@@ -930,23 +951,30 @@ void rfm22_868_setup() {
 
 int main() {
     int n;
-    int rssi_1, rssi_2;
+    int rssi, enable_868;
     temperature = (int16_t)((temp.read_u16()-9930)/199.0);
-    ftdi.printf("Initiliasing GPS..\r\n");
+    //ftdi.printf("Initiliasing GPS..\r\n");
     gps_setup();
-    ftdi.printf("Initiliasing RFM22..\r\n");
+    //ftdi.printf("Initiliasing RFM22..\r\n");
     //rfm22_434_setup();
     rfm22_868_setup();
     
-    //setFrequency_rfm434(434.201);
-    //write_rfm434(0x6D, 0x04);// turn tx low power 11db
-    //write_rfm434(0x07, 0x08); // turn tx on
+    setFrequency_rfm434(434.201);
+    write_rfm434(0x6D, 0x04);// turn tx low power 11db
+    write_rfm434(0x07, 0x08); // turn tx on
     
     setFrequency_rfm868(869.5);
-    write_rfm868(0x6D, 0x07);// turn tx high power 100mW
-    write_rfm868(0x07, 0x08); // turn tx on
     
-    ftdi.printf("Entering Loop.\r\n");
+    rssi = ((int)read_rfm868(26)*51 - 12400)/100; // returned in dBm
+    if (rssi > -50) { // if 868 channel is busy
+        enable_868 = 0;
+    } else {
+        enable_868 = 1;
+        write_rfm868(0x6D, 0x07);// turn tx high power 17db
+        write_rfm868(0x07, 0x08); // turn tx on
+    }
+    
+    //ftdi.printf("Entering Loop.\r\n");
     for (;;) {
         // Retrieve new GPS values if required
         /* */
@@ -955,43 +983,62 @@ int main() {
         //gps.get_time();
         
         write_rfm868(0x07, 0x01); // turn tx off
-        rssi_1 = ((int)read_rfm868(26)*51 - 12400)/100; // returned in dBm
-        wait(0.5);
+        if (nlock_count>8) {
+            gpsPower(0);
+            wait(2);
+            gpsPower(1);
+            nlock_count = 0;
+        }
+        rssi = ((int)read_rfm868(26)*51 - 12400)/100; // returned in dBm
+        wait(0.1);
         temperature = (int16_t)((temp.read_u16()-9930)/199.0); // Radios need to be turned off here
-        rssi_2 = ((int)read_rfm868(26)*51 - 12400)/100;
-        //if ((rssi_1 > -50) && (rssi_2 > -50))
-        
-        write_rfm868(0x07, 0x08); // turn tx on
-        
+        if (rssi > -50) { // if 868 channel is busy
+            enable_868 = 0;
+        } else {
+            enable_868 = 1;
+            write_rfm868(0x07, 0x08); // turn tx on
+        }
         // Print out the vals
         gps_check_lock();
+        if (lock==0) {
+            state='L';
+            nlock_count++;
+        } else if (!enable_868) {
+            state='O';
+        } else {
+            nlock_count = 0;
+            state='F';
+        }
         
-        //ftdi.printf("lock:%d Error:%d\r\n",lock,GPSerror);
-        
-        if(gps_get_position()!=0) {
-            gps_get_position(); // Try again if it failed
-            }
-        
-        //ftdi.printf("lat:%d lon:%d alt:%d sats:%d Error:%d\r\n",lat,lon,alt,sats,GPSerror);
-        
+        gps_get_position();
         gps_get_time();
         
-        //ftdi.printf("time: %d:%d:%d Error:%d\r\n",hour,minute,second,GPSerror);
-        
-        //gps.scanf("%s", &gpsout);
-        //ftdi.printf("Temp: 0x%x \r\n", temperature);
-        
-        n = sprintf (buffer434, "$$VERTIGO,%d,%02d%02d%02d,%ld,%ld,%ld,%d", count, hour, minute, second, lat, lon, alt, sats);
+        n = sprintf (buffer434, "$$VERTIGO,%d,%02d%02d%02d,%ld,%ld,%ld,%d,%c", count434, hour, minute, second, lat, lon, alt, sats, state);
         n = sprintf (buffer434, "%s*%04X\n", buffer434, (CRC16_checksum(buffer434) & 0xFFFF));
-        
-        
-        n = sprintf (buffer868, "$$8VERTIGO,%d,%02d%02d%02d,%ld,%ld,%ld,%d,%d,%d,%d", count, hour, minute, second, lat, lon, alt, sats, temperature, rssi_1, rssi_2);
-        n = sprintf (buffer868, "%s*%04X\n", buffer868, (CRC16_checksum(buffer868) & 0xFFFF));
         //rtty_434_txstring(buffer434);
-        rtty_868_txstring(buffer868);
+        count434++;
+        
+        if(enable_868) {
+            for (int count=0; count<10; count++) {
+                last_lon = lon;
+                last_lat = lat;
+                last_alt = alt;
+                gps_get_position();   
+                gps_get_time();
+                if ((lat==last_lat)&&(lon==last_lon)&&(alt==last_alt)) {
+                    gps_check_lock;
+                } else {
+                    state = 'F'; // cheat a second here.
+                }
+                n = sprintf (buffer868, "$$8VERTIGO,%d,%02d%02d%02d,%ld,%ld,%ld,%d,%c,%d,%d", count868, hour, minute, second, lat, lon, alt, sats, state, temperature, rssi);
+                n = sprintf (buffer868, "%s*%04X\n", buffer868, (CRC16_checksum(buffer868) & 0xFFFF));
+        
+                rtty_868_txstring(buffer868);
+                count868++;
+            }
+        }
         //ftdi.printf(superbuffer);
 
-        count++;
         //statusLED = !statusLED;
     }
 
