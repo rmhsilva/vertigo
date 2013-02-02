@@ -8,6 +8,8 @@
 #define GPS_TX      p28
 #define GPS_RX      p27
 
+#define CUTDOWN     LED4
+
 #define TEMP_IN     p20       // Analogue temperature sensor in
 
 
@@ -29,11 +31,16 @@ SPI rfm868(p11, p12, p13);
 
 AnalogIn temp(TEMP_IN);
 
+//Cutdown
+DigitalOut cutdown(CUTDOWN);
+
 int GPSerror = 0, count434 = 0, count868 = 0, lock=0, dgps=0, lat=0, lon=0, alt=0, sats=0, hour=0, minute=0, second=0;
 int last_lat=0, last_lon=0, last_alt=0;
 char state;
 
 int temperature = 0, nlock_count = 0;
+
+int cutdown_enabled = 0, cutdown_alt = 50000;
 
 char buffer434 [80]; //Telem string buffer
 
@@ -952,11 +959,13 @@ void rfm22_868_setup() {
 int main() {
     int n;
     int rssi, enable_868;
+    cutdown = 0;
+    
     temperature = (int16_t)((temp.read_u16()-9930)/199.0);
     //ftdi.printf("Initiliasing GPS..\r\n");
     gps_setup();
     //ftdi.printf("Initiliasing RFM22..\r\n");
-    //rfm22_434_setup();
+    rfm22_434_setup();
     rfm22_868_setup();
     
     setFrequency_rfm434(434.201);
@@ -1013,9 +1022,23 @@ int main() {
         gps_get_position();
         gps_get_time();
         
+        // Process triggers here
+        
+        // Cutdown
+        if (cutdown_enabled && (alt>cutdown_alt)) {
+            // Double check the altitude!
+            gps_get_position();
+            if (alt>cutdown_alt) {
+                cutdown = 1;
+                wait(3);
+                cutdown = 0;
+                cutdown_enabled = 0;
+                state = 'C';
+            }
+        }
         n = sprintf (buffer434, "$$VERTIGO,%d,%02d%02d%02d,%ld,%ld,%ld,%d,%c", count434, hour, minute, second, lat, lon, alt, sats, state);
         n = sprintf (buffer434, "%s*%04X\n", buffer434, (CRC16_checksum(buffer434) & 0xFFFF));
-        //rtty_434_txstring(buffer434);
+        rtty_434_txstring(buffer434);
         count434++;
         
         if(enable_868) {
