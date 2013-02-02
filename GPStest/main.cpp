@@ -27,7 +27,11 @@ SPI rfm434(p5, p6, p7);
 DigitalOut ss_port_868(p14);
 SPI rfm868(p11, p12, p13);
 
+AnalogIn temp(TEMP_IN);
+
 int GPSerror = 0, count = 0, lock=0, dgps=0, lat=0, lon=0, alt=0, sats=0, hour=0, minute=0, second=0;
+
+int temperature;
 
 char buffer434 [80]; //Telem string buffer
 
@@ -926,6 +930,8 @@ void rfm22_868_setup() {
 
 int main() {
     int n;
+	int rssi_1, rssi_2;
+    temperature = (int16_t)((temp.read_u16()-9930)/199.0);
     ftdi.printf("Initiliasing GPS..\r\n");
     gps_setup();
     ftdi.printf("Initiliasing RFM22..\r\n");
@@ -970,7 +976,14 @@ int main() {
         n = sprintf (buffer434, "$$VERTIGO,%d,%02d%02d%02d,%ld,%ld,%ld,%d", count, hour, minute, second, lat, lon, alt, sats);
         n = sprintf (buffer434, "%s*%04X\n", buffer434, (CRC16_checksum(buffer434) & 0xFFFF));
         
-        n = sprintf (buffer868, "$$8VERTIGO,%d,%02d%02d%02d,%ld,%ld,%ld,%d", count, hour, minute, second, lat, lon, alt, sats);
+		write_rfm868(0x07, 0x01); // turn tx off
+		rssi_1 = ((int)read_rfm868(26)*51 - 12400)/100; // returned in dBm
+		wait(0.5);
+		rssi_2 = ((int)read_rfm868(26)*51 - 12400)/100;
+		write_rfm868(0x07, 0x08); // turn tx on
+		
+        //temperature = (int16_t)((temp.read_u16()-9930)/199.0); // Radios need to be turned off here
+        n = sprintf (buffer868, "$$8VERTIGO,%d,%02d%02d%02d,%ld,%ld,%ld,%d,%d,%d,%d", count, hour, minute, second, lat, lon, alt, sats, temperature, rssi_1, rssi_2);
         n = sprintf (buffer868, "%s*%04X\n", buffer868, (CRC16_checksum(buffer868) & 0xFFFF));
         //rtty_434_txstring(buffer434);
         rtty_868_txstring(buffer868);
