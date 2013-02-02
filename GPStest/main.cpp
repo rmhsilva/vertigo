@@ -823,8 +823,8 @@ void rtty_868_txbit (int bit)
                 // Theoretical 100 Baud:
                 //wait_us(9500); // (20000)/2 = 10000 - 500 as that seems to be how the one above is calculated
                 // Theoretical 300 Baud:
-                wait_us(3250); // (20000)/6 = 3333.3 - 500 as that seems to be how the one above is calculated
-
+                //wait_us(3250); // (20000)/6 = 3333.3 - 500 as that seems to be how the one above is calculated
+                wait_us(1550); // 600 BAUD!
 }
 
 
