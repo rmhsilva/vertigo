@@ -991,7 +991,7 @@ int main() {
         }
         rssi = ((int)read_rfm868(26)*51 - 12400)/100; // returned in dBm
         wait(0.1);
-        temperature = (int16_t)((temp.read_u16()-9930)/199.0); // Radios need to be turned off here
+        temperature = (int16_t)((temp.read_u16()-9930)/19.9); // Radios need to be turned off here
         if (rssi > -50) { // if 868 channel is busy
             enable_868 = 0;
         } else {
